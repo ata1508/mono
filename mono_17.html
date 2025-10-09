@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>計画名をプロットして類似計画名を探す</title>
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: system-ui, Roboto, "Yu Gothic", sans-serif; margin: 16px; }
+    h1 { font-size: 18px; margin: 0 0 8px; }
+    .panel { display: grid; grid-template-columns: 1fr auto auto auto; gap: 10px; align-items: center; margin: 8px 0 12px; }
+    #kw { padding: 8px; font-size: 14px; width: 100%; }
+    label { font-size: 13px; user-select: none; white-space: nowrap; }
+    #chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 6px 0 10px; }
+    .chip { background: #f0f3f9; border: 1px solid #d0d7e2; border-radius: 999px; padding: 5px 10px; font-size: 13px; cursor: pointer; transition: background .15s; }
+    .chip:hover { background: #e3ecfc; }
+    .chip.active { background: #d3e2fd; border-color: #aac3fa; }
+    #stats { font-size: 12px; color: #555; margin: 6px 0 12px; }
+    #chart { width: 100%; height: 640px; }
+    /* TopK 表 */
+    #topk { margin-top: 14px; }
+    #topk h2 { font-size: 14px; margin: 0 0 6px; }
+    #topk table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    #topk th, #topk td { border-bottom: 1px solid #e5e7eb; padding: 6px 8px; text-align: left; }
+    #topk tr:hover { background: #f8fafc; cursor: pointer; }
+    .muted { color: #6b7280; }
+    .mono { font-variant-numeric: tabular-nums; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace; }
+  </style>
+</head>
+<body>
+  <h1>計画名をプロットして類似計画名を探す(ものづくり補助金 第17回)</h1>
+
+  <!-- プリセットキーワード -->
+  <div id="chips"></div>
+
+  <!-- 検索・設定 -->
+  <div class="panel">
+    <input id="kw" type="text" placeholder="例: ドローン（空欄＝ラベル全非表示）" aria-label="検索語" />
+    <label><input id="useRe" type="checkbox" /> 正規表現</label>
+    <label><input id="caseSensitive" type="checkbox" /> 大文字小文字を区別</label>
+    <label><input id="wordBoundary" type="checkbox" /> 単語境界</label>
+  </div>
+
+  <div id="stats">一致: 0/0（凡例で採択回ON/OFF、hoverでlabel表示）</div>
+  <div id="chart"></div>
+
+  <!-- TopK 距離の表示領域 -->
+  <div id="topk">
+    <h2>Top-20 近傍（2D距離）</h2>
+    <div class="muted">点をクリックすると、ここに上位20件を表示します。</div>
+  </div>
+
+  <script type="module">
+    /** プリセットキーワード6つ **/
+    const presets = ["測量","ドローン","自動","プラットフォーム","塗装","溶接","観光", "冷凍", "ＡＩ","ＤＸ","ワイン","酒","アルコール"];
+    const chipsEl = document.getElementById("chips");
+
+    const rows = [{"x":9.049313,"y":8.63096,"label":"高付加価値計量袋詰梱包システム導入計画","round":"17"},{"x":12.312853,"y":6.2229395,"label":"５Ｇ・６Ｇ関連部品の金型製造工程の省力化","round":"17"},{"x":12.866174,"y":4.961359,"label":"先進技術導入による鋼管製造ラインＤＸ革命","round":"17"},{"x":7.2212877,"y":3.8277135,"label":"立体自動倉庫の導入による鏡板工場ＤＸの実現","round":"17"},{"x":10.3295765,"y":7.9293265,"label":"粉体処理装置製造の飛躍的生産性向上の取組み","round":"17"},{"x":9.071933,"y":2.7203193,"label":"アナログ作業からの脱却による抹茶の世界展開","round":"17"},{"x":9.930363,"y":5.2333455,"label":"工作機械自動化システム導入による省力化事業","round":"17"},{"x":6.937827,"y":3.611032,"label":"倉庫内の荷物位置見える化による物流ＤＸの実現","round":"17"},{"x":10.094329,"y":4.53983,"label":"洗浄・検査工程の自動化で大幅な省人化を実現！","round":"17"},{"x":10.646461,"y":6.109118,"label":"自動車ピラーの組立工程の省力化による生産性向上","round":"17"},{"x":14.480139,"y":4.7004604,"label":"先端ファイバーレーザー溶接システムの開発・導入","round":"17"},{"x":10.944248,"y":7.277814,"label":"強粘着テープの高精度加工の実現及び生産性の向上","round":"17"},{"x":11.879429,"y":7.148963,"label":"電動車向け電子回路部品製造工程の省力化への挑戦","round":"17"},{"x":6.1690288,"y":3.2694826,"label":"省力化により地域密着を最大化する宿泊施設の展開","round":"17"},{"x":9.069723,"y":7.865558,"label":"自動仕分けマシン導入による配送先仕分けの省力化","round":"17"},{"x":13.50854,"y":5.1604505,"label":"鉄骨溶接を機械化し、工場全体の生産性向上への取組","round":"17"},{"x":9.176173,"y":7.494471,"label":"小ロット多品種生産に対応する自動化システムの構築","round":"17"},{"x":10.17292,"y":6.035015,"label":"ワーク供給・排出の完全自動化により無人稼働を実現","round":"17"},{"x":8.8321705,"y":8.98576,"label":"製造されたピロー包装製品の検品・梱包作業の省人化","round":"17"},{"x":10.023009,"y":6.622654,"label":"人手不足・低コストに対応する自動生産ラインの導入","round":"17"},{"x":10.1688795,"y":6.1365304,"label":"ローター自動組付け機導入による生産性と品質の向上","round":"17"},{"x":10.295136,"y":6.0965834,"label":"集成材製造工程の機械化促進による省力化の取り組み","round":"17"},{"x":9.072053,"y":8.2786665,"label":"自動包装機の導入による省人化の実現と労働環境の改善","round":"17"},{"x":10.91547,"y":6.2125382,"label":"型枠部品生産の省力化による納期短縮と生産余力の拡大","round":"17"},{"x":9.564135,"y":5.237612,"label":"業務用マットクリーニング業務の自動化ライン新設計画","round":"17"},{"x":8.991435,"y":8.548765,"label":"オーダーメイド設備で「金澤文鳥」袋包装工程を自動化","round":"17"},{"x":9.22698,"y":8.39534,"label":"輸出ラムネ用専用自動キャップシール製作機の開発導入","round":"17"},{"x":9.78009,"y":3.6815825,"label":"外観・寸法検査装置導入による省人化と検査能力の向上","round":"17"},{"x":11.765661,"y":7.3011794,"label":"ニッケル水素組電池製造ラインの自動化による省力化事業","round":"17"},{"x":11.9619875,"y":7.657111,"label":"多品種少量・中型ポンプ部品の自動化加工プロセスの開発","round":"17"},{"x":12.023191,"y":5.3281507,"label":"金属熱処理後の検査の自動化による省力化と付加価値向上","round":"17"},{"x":13.106682,"y":6.872943,"label":"ＥＶ用バスバーのインサート成形工程の省力化とＤＸ展開","round":"17"},{"x":10.039069,"y":2.9670465,"label":"ＳＣＢＡ事業における製造プロセスの省力化と生産性向上","round":"17"},{"x":8.398188,"y":4.203839,"label":"自社倉庫内の自動化による商品受入・出荷作業の省力化計画","round":"17"},{"x":13.260172,"y":6.72467,"label":"廃石膏ボード処理自動化ライン構築による省力化と収益改善","round":"17"},{"x":8.123346,"y":2.838358,"label":"自動分析機能導入による不動産仲介業の戦略立案省力化計画","round":"17"},{"x":9.114675,"y":4.8880105,"label":"窓枠材生産工程の集約とデータシステム化による生産性向上","round":"17"},{"x":12.5852585,"y":4.7416787,"label":"特別仕様の主筋自動曲装置導入による鉄筋曲げ工程の省力化","round":"17"},{"x":12.096607,"y":7.3858037,"label":"センサー付き生地ポンプを利用した定量制御焼成技術の確立","round":"17"},{"x":11.083768,"y":7.0039964,"label":"プリプレス工程におけるプレート搬送自動化システムの構築","round":"17"},{"x":13.802884,"y":6.4597106,"label":"生産性を向上するアルミホイール自動加工ロボットシステム","round":"17"},{"x":10.167705,"y":5.8879075,"label":"国内製造設備導入による省力化とサプライチェーンへの対応","round":"17"},{"x":10.077724,"y":6.68673,"label":"完全オーダーメイド！自社開発加工機による生産性向上事業","round":"17"},{"x":7.3960633,"y":1.1013612,"label":"生成ＡＩを活用した医療事務代行サービス業務の自動化計画","round":"17"},{"x":9.484925,"y":5.892973,"label":"出荷・移送配合制御盤更新による大幅な生産プロセスの改善","round":"17"},{"x":10.614766,"y":6.5108576,"label":"我が国の防衛力強化に向けた砲弾部品生産プロセスの自動化","round":"17"},{"x":13.871403,"y":6.357041,"label":"協働ロボットを活用した革新的完全自動加工システムの構築","round":"17"},{"x":8.967061,"y":6.9883657,"label":"センサー式選別機で馬鈴薯の選別作業の生産性を大幅に向上","round":"17"},{"x":13.837968,"y":6.3223577,"label":"多関節ロボットシステムの構築による機械加工工程の改革事業","round":"17"},{"x":12.368172,"y":5.945212,"label":"根管充填材料の自動製造検査ライン構築による省力化の実現！","round":"17"},{"x":9.002011,"y":8.787115,"label":"オリジナル授与品袋の省力化を実現するギャンギング製袋生産","round":"17"},{"x":7.159699,"y":2.839626,"label":"アフターサポートサービスの展開で顧客のロイヤルティを獲得","round":"17"},{"x":14.503165,"y":6.011109,"label":"自動溶接ロボットの導入による溶接工程の省人化と仕損率改善","round":"17"},{"x":9.995564,"y":6.1185203,"label":"多数個取り製品取出工程の高度化及び省力化による生産性向上","round":"17"},{"x":8.281701,"y":4.007796,"label":"生産管理システム導入による業務効率の改善及び生産性の向上","round":"17"},{"x":10.234946,"y":7.048547,"label":"圧入工程の自動装置導入による生産性の向上と付加価値の増加","round":"17"},{"x":14.395573,"y":6.309819,"label":"人的作業に依存していた研磨工程のロボット導入による省力化","round":"17"},{"x":14.195902,"y":5.9905963,"label":"溶接ロボットシステムの導入で建機部品加工の生産性向上計画","round":"17"},{"x":11.879909,"y":7.1022387,"label":"自動化省力化品質向上で電動バイク部品製造等将来計画に展開","round":"17"},{"x":12.925039,"y":7.013149,"label":"ＥＶ用締結部品製造のための自動加工ライン構築による省力化","round":"17"},{"x":14.111847,"y":5.7958837,"label":"溶接ロボット導入による建築用金物の革新的な生産体制の構築","round":"17"},{"x":9.572988,"y":5.9196844,"label":"最新の制御盤を導入して、品質の安定と生産性向上に取り組む","round":"17"},{"x":11.183375,"y":7.8751063,"label":"高効率な火力発電に資するガスタービン部品製造の生産性向上","round":"17"},{"x":10.609213,"y":5.8588777,"label":"属人的切断から脱却しＩｏＴを駆使した省人化切断の推進事業","round":"17"},{"x":6.0450006,"y":5.7113433,"label":"印刷工程の自動化とＡＩ管理を導入した印刷環境の省人化計画","round":"17"},{"x":10.145543,"y":6.1037703,"label":"特別仕様のバリ取り装置導入による当該作業自動化に伴う省力化","round":"17"},{"x":10.00054,"y":6.2517924,"label":"グリル生産のシステム化（ＤＸ、ＩｏＴ）と自動機による省人化","round":"17"},{"x":13.644567,"y":5.9340224,"label":"産業輸送製品製造特化アーク溶接の省力化と高耐久高品質化事業","round":"17"},{"x":7.229308,"y":1.5139709,"label":"ＡＩクローリングによる顧客別営業活動支援システムの構築","round":"17"},{"x":13.776448,"y":6.459191,"label":"内面研削盤とロボットシステム内製による生産プロセスの省力化","round":"17"},{"x":5.7724752,"y":5.790059,"label":"オーダーメイドした機械を導入し、アルミ罐用印版製作への挑戦","round":"17"},{"x":11.907521,"y":5.4210763,"label":"鋳造品の湯道破砕とバリ取りの自動化による原価低減と納期短縮","round":"17"},{"x":9.287802,"y":3.3781703,"label":"接続成形作業のデジタル化・自動化による品質向上と生産性向上","round":"17"},{"x":11.320347,"y":7.643481,"label":"溶剤塗装省力化ライン構築による半導体製造装置部品の受注獲得","round":"17"},{"x":14.256848,"y":8.298033,"label":"熟練作業員に依存しないスマート塗装技術での新塗装ライン構築","round":"17"},{"x":9.870699,"y":5.351413,"label":"社内システムと連携した製造設備導入で省力化・省人化を実現。","round":"17"},{"x":9.482583,"y":6.3871217,"label":"人による作業を自動化し成長事業へ人員配置して企業成長を図る","round":"17"},{"x":9.144249,"y":8.619878,"label":"自動梱包機の開発・導入によるポリエステル短繊維生産の効率化","round":"17"},{"x":13.814549,"y":6.6347833,"label":"ロボットを活用した自動車トランク用ライト生産ラインの無人化","round":"17"},{"x":12.9967785,"y":6.136895,"label":"曲げ工程の高度化と生産管理システムの連携による省人化を両立","round":"17"},{"x":11.620721,"y":7.0217605,"label":"電動化製品の競争力強化：自動化システム構築による省力化推進","round":"17"},{"x":8.437854,"y":1.0577404,"label":"ＡＩを活用した外観検査装置の開発による微細部品検査の高度化","round":"17"},{"x":8.874983,"y":6.6187754,"label":"不織布超音波溶着加工を自動化・省力化・高度化し、新製品開発","round":"17"},{"x":11.232035,"y":7.607418,"label":"アルカリ乾電池の生産体制刷新による生産性向上と省力化の実現","round":"17"},{"x":11.939287,"y":7.028057,"label":"極薄型シュリンクフィルム対応用カッティング加工機の改良製作","round":"17"},{"x":9.425798,"y":8.358808,"label":"自動計数・梱包システム導入による冷間圧造ナットの生産性向上","round":"17"},{"x":9.053399,"y":8.520273,"label":"全自動製袋機を導入し重量物用製袋に対応すると共に生産性向上","round":"17"},{"x":9.99213,"y":6.572298,"label":"自動化・省人化製造ライン開発による革新的生産プロセスの導入","round":"17"},{"x":12.226099,"y":6.9318967,"label":"１５０ｔ竪型成形機有人金具インサート成形の完全自動化無人化","round":"17"},{"x":11.186641,"y":1.6591398,"label":"前例のない革新的調査機械導入事業で管路施設の調査に新風を！","round":"17"},{"x":8.504585,"y":5.1403627,"label":"製造から出荷前工程を自動化し、業務の大幅改善と顧客価値の向上","round":"17"},{"x":7.9340034,"y":7.464705,"label":"道産小豆の流通安定化に貢献する選り分け豆の即納サービスの展開","round":"17"},{"x":9.8944845,"y":6.8900743,"label":"人手不足に対応した、板金製品の増産体制と新製品開発体制の構築","round":"17"},{"x":9.225899,"y":6.8892617,"label":"縦型センサーとフリートレー選別機導入によるりんご選果の省力化","round":"17"},{"x":9.382689,"y":7.2149987,"label":"ＡＩ・ＩｏＴ技術を駆使した自動組立充填機導入による生産性向上","round":"17"},{"x":12.328783,"y":9.024032,"label":"最新技術のＣＮＣ旋盤で手作業を自動化し大量生産に挑戦する計画","round":"17"},{"x":14.11741,"y":5.767574,"label":"最新型溶接ロボットシステム導入による鋼構造物製造の省人化計画","round":"17"},{"x":10.103131,"y":4.5688725,"label":"全自動、不得意分野の改善、環境負荷の無い、洗浄機の開発・導入","round":"17"},{"x":6.7370696,"y":5.7331166,"label":"印刷不良の予防・検査体制の完全自動化による品質・生産性の向上","round":"17"},{"x":14.180431,"y":6.321849,"label":"新たにロボットを活用した缶パーツ製造工程の製造ライン構築事業","round":"17"},{"x":14.362865,"y":6.2209187,"label":"省人化のための専用協働ロボット導入による町工場の更なるＤＸ化","round":"17"},{"x":10.812123,"y":5.880375,"label":"切削加工におけるオーダーメイド装置導入による省人・省力化計画","round":"17"},{"x":8.552748,"y":4.387244,"label":"アパレルサンプル生産企業のＩＴによる生産性向上と事業領域拡大","round":"17"},{"x":7.815715,"y":2.1641762,"label":"業務効率化とコスト削減を目的とした新アノテーションツール開発","round":"17"},{"x":14.406973,"y":6.319091,"label":"ロボット導入でプレス工程を無人化し、生産性の飛躍的向上を実現","round":"17"},{"x":7.206715,"y":4.157597,"label":"回転寿司店舗オペレーション革新による省力化と震災復興への貢献","round":"17"},{"x":9.924862,"y":8.741974,"label":"量産プラスチックボトル検査の全自動化による省人化と生産性向上","round":"17"},{"x":13.618116,"y":5.9679112,"label":"重切削工程に対し、新たなＭＣと専用ロボットによる独自の自動化","round":"17"},{"x":8.907713,"y":8.820869,"label":"カラー舗装材の需要増加に対応する骨材包装工程の完全自動化事業","round":"17"},{"x":12.044624,"y":5.993199,"label":"多品種少量の鋳物製造を型枠増＆大型化で超進化させる省力化革新","round":"17"},{"x":10.075376,"y":6.252463,"label":"独自自動化設備導入による労働生産性向上と生産部品の競争力強化","round":"17"},{"x":11.210745,"y":6.843039,"label":"多品種加工時の自動ワーク原点修正を利用した生産性向上の省力化","round":"17"},{"x":14.188268,"y":4.1571803,"label":"レーザ溶断加工の自動化による生産ライン設備部品の新規受注獲得","round":"17"},{"x":8.86534,"y":9.034594,"label":"包装工程の全自動化による引き合い旺盛な海外需要への対応力強化","round":"17"},{"x":8.084203,"y":3.2359853,"label":"雑草管理サービス事業拡大に向けたシステム投資による省力化実現","round":"17"},{"x":13.910151,"y":6.425741,"label":"多関節ロボットシステムによるバリ取り・仕上げ研磨の自動工程化","round":"17"},{"x":13.550608,"y":6.78433,"label":"ロボットシステムによる半導体製造装置の精密部品製造工程自動化","round":"17"},{"x":8.546198,"y":3.3138645,"label":"タンカーの運航管理業務効率化とリスク軽減を目指す業務改善計画","round":"17"},{"x":11.042707,"y":7.0577006,"label":"半導体製造装置向け部品の切削・検査工程自動化による生産性向上","round":"17"},{"x":10.030172,"y":6.430938,"label":"各拠点に全自動ロールスリッターを導入し労働生産性の向上を図る","round":"17"},{"x":12.356889,"y":5.7551217,"label":"縮管・拡管加工の完全自動化による人手不足の解消と収益性の改善","round":"17"},{"x":12.202075,"y":3.623484,"label":"広域送電網の整備に必要な送電鉄塔用金物類の新・増産体制の構築","round":"17"},{"x":7.365617,"y":0.7520562,"label":"大規模言語モデルＡＩを活用した特許出願資料作成システムの構築","round":"17"},{"x":9.85142,"y":4.2725,"label":"専用検査機を開発・導入！省人化・短納期・不良品流出撲滅を実現","round":"17"},{"x":12.668295,"y":7.4429054,"label":"ＥＶ、ＨＶ用ｅアクスル部品研磨加工の自動省人化製造ライン構築","round":"17"},{"x":8.028321,"y":0.66305935,"label":"ＡＩカメラを活用した画像解析ソリューションで検査業務の効率化","round":"17"},{"x":9.343042,"y":6.425839,"label":"ユーザー依頼に応えフランジ製造の完全無人化の製造ラインを新設","round":"17"},{"x":10.664078,"y":6.106174,"label":"新製品専用の制御装置付き加工機導入による生産プロセスの省力化","round":"17"},{"x":8.189302,"y":9.053198,"label":"洗卵選別包装システム導入で高付加価値卵の販売数増加と不良削減","round":"17"},{"x":8.859972,"y":8.711848,"label":"「かつおパック」増産に向けた検品・梱包工程の自動化ライン構築","round":"17"},{"x":14.046201,"y":6.399023,"label":"パジャマ衿地縫い工程のロボット化による生産性向上と新製品開発","round":"17"},{"x":12.0714245,"y":2.9852521,"label":"省エネ住宅義務化に向けた、断熱材プレカットのリードタイム短縮","round":"17"},{"x":11.466602,"y":6.052533,"label":"職人感覚のデジタル化による高精度切削部品製造ラインの完全自動化","round":"17"},{"x":6.3164864,"y":4.034312,"label":"ＤＸ技術を活用した強度計算システムの導入と革新的な省力化の実現","round":"17"},{"x":9.892225,"y":3.1855147,"label":"画像解析全数検査機導入による検査効率向上・ヒューマンエラー撲滅","round":"17"},{"x":9.557354,"y":6.9014096,"label":"オーダーメイド充填設備導入による画期的に生産性を向上させる事業","round":"17"},{"x":5.743139,"y":5.6315017,"label":"包装印刷業者が未来に向け革新的生産性向上と省人化を目指す事業","round":"17"},{"x":10.479313,"y":4.825226,"label":"仮設足場板高圧洗浄装置導入による機材センター生産性向上促進事業","round":"17"},{"x":10.400639,"y":5.599921,"label":"アドブルー（尿素水）プラントの自動機械化により生産性を向上させる","round":"17"},{"x":14.135445,"y":6.4553795,"label":"ロボットシステムを活用した２４時間止まらない無人加工ラインを構築","round":"17"},{"x":9.276545,"y":6.194216,"label":"縫製技術力を活かし、高付加価値縫製加工品の加工受託事業拡大を図る","round":"17"},{"x":9.002851,"y":7.225529,"label":"カット野菜計量工程の自動化ライン構築による調理簡便化ニーズへの対応","round":"17"},{"x":12.682651,"y":3.687024,"label":"プラスチック循環型社会構築と革新的ものづくり力強化による経営力強化","round":"17"},{"x":14.19604,"y":6.463573,"label":"生産量２倍かつ人員半減を実現するロボット・センサー活用システム導入","round":"17"},{"x":12.488558,"y":5.7724338,"label":"自動化装置導入によるフィルム・金属箔加工の省力化・高付加価値化事業","round":"17"},{"x":11.162311,"y":5.9725246,"label":"革新的コイニング工程省力化技術の導入による精密鍛造製品の生産性の向上","round":"17"},{"x":14.155789,"y":6.2146235,"label":"ショットブラスト加工のロボット化による省人化及び高効率加工方法の確立","round":"17"},{"x":11.061259,"y":8.431067,"label":"溶着・裁断・排出・積み上げまで無人化する高周波ウェルダー機の開発導入","round":"17"},{"x":14.027367,"y":6.7049303,"label":"八ツ橋メーカー「東山」による業界初！産業ロボットによる製造自動化戦略","round":"17"},{"x":10.073483,"y":5.215886,"label":"属人的な運搬、巻き取り工程の自動化及び高精度化による生産効率向上計画","round":"17"},{"x":9.82323,"y":5.8304358,"label":"２４時間稼働の熱処理を無人稼働化することで、企業体質を持続可能にする","round":"17"},{"x":7.524344,"y":2.9912713,"label":"メール仕分システムを導入し、コスト競争力を高めて大口顧客の獲得を実現","round":"17"},{"x":8.8366995,"y":8.816062,"label":"面取り加工の生産プロセスの省人化と３Ｄパッケージ実装用ガラス基板の量産","round":"17"},{"x":7.6477876,"y":2.121131,"label":"クレジット明細作成の自動化による金融サービス事業者としての独自性の確立","round":"17"},{"x":9.236934,"y":2.6318796,"label":"デジタル技術の活用で実現させる生産性向上・省力化と新たな加工領域の習得","round":"17"},{"x":14.039781,"y":7.341961,"label":"革新的な塗装専用設備・多関節ロボットの導入による省力化＋高品質化の実現","round":"17"},{"x":7.9172363,"y":10.940087,"label":"オーガニック製法の日本酒醸造の省力化とさらなる品質向上による海外展開強化","round":"17"},{"x":11.7246895,"y":7.6592307,"label":"海外輸出拡大に向けた高精度・低コスト自動テンプル用精密部品生産技術の確立","round":"17"},{"x":9.488088,"y":7.4633784,"label":"遠赤外線加熱技術獲得によるリフロー工程の生産プロセス省力化および品質向上","round":"17"},{"x":10.518861,"y":7.5904584,"label":"建設業向けボルト製造工程における自動化設備の構築で生産性の大幅アップを実現","round":"17"},{"x":6.316606,"y":8.423902,"label":"伝統的郷土菓子「軽羹」「軽羹饅頭」の職人技能の自動化および販路拡大への挑戦","round":"17"},{"x":10.164676,"y":6.548829,"label":"ニット生地起毛加工工程における職人技術のデータ化と自動化による労働生産性向上","round":"17"},{"x":14.283121,"y":6.5081577,"label":"ロボット機能を搭載した最新型編機を導入しマルチ生産体制の高効率化を実現する。","round":"17"},{"x":11.203449,"y":7.833969,"label":"半導体製造の需要拡大に貢献する静電チャックの省力化・自動化の生産加工体制の構築","round":"17"},{"x":8.647589,"y":8.972312,"label":"個包装・５連包装ビスケット特化の自社商品包装及びリパック対応のための省力化事業","round":"17"},{"x":10.541157,"y":6.5364995,"label":"ブランク工程の全自動化による革新的な製造プロセス構築で、飛躍的な生産性向上を果たす","round":"17"},{"x":10.315005,"y":5.943173,"label":"７日の手作業時間を自動化で１８秒に短縮！超ニッチ市場に参入し高付加価値経営にシフト","round":"17"},{"x":10.37547,"y":7.4207363,"label":"試作開発・小ロット本生産一気通貫受注獲得に向けた高精度・低コスト試作開発体制の整備","round":"17"},{"x":13.001888,"y":5.3126225,"label":"高性能建造部躯体部鉄骨製造における高精度肉厚・複雑形状鉄鋼構造物鋼板孔加工技術の確立","round":"17"},{"x":12.708094,"y":5.817928,"label":"高剛性大型パレット向け精密部品供給能力強化に向けた高精度・高速厚肉部材切断技術の確立","round":"17"},{"x":9.021137,"y":8.3329935,"label":"ＨＡＣＣＰ義務化による衛生強化需要に対応したパンチングザル製品等の飛躍的な生産性向上計画","round":"17"},{"x":12.1715765,"y":5.5395594,"label":"強靭なサプライチェーン構築に向けた省人化・省力化による高精度・低コスト部材切断技術の確立","round":"17"},{"x":8.576804,"y":8.458901,"label":"災害対応等に伴う無菌包装米飯の急激な需要拡大に対応した生産性向上と製造設備の完全自動化計画","round":"17"},{"x":12.015136,"y":7.6030083,"label":"ＥＶ向けプラスチック精密部品低コスト化に向けた高精度・高速・低コストフライス加工技術の確立","round":"17"},{"x":11.895605,"y":6.6786456,"label":"大容量・高速コネクタ部品製造における高精度・低コスト・ハイサイクル亜鉛ダイカスト技術の確立","round":"17"},{"x":13.706068,"y":6.4333906,"label":"ガントリーローダー・自動計測装置と複合加工機の連携によるローター生産工程の完全自動化体制構築","round":"17"},{"x":11.976256,"y":7.034007,"label":"１個からの試作受注対応力強化に向けた３Ｄデータ連携体制の整備と複雑形状同時一体加工技術の確立","round":"17"},{"x":11.819829,"y":7.8770647,"label":"低コスト化と安定・継続供給生産体制整備に向けた高精度・低コスト小型精密部品射出成形技術の確立","round":"17"},{"x":9.806445,"y":6.6661053,"label":"オーダーメイド設備・システムを活用した商品出荷プロセスの自動化・省人化による労働生産性向上事業","round":"17"},{"x":12.293835,"y":1.8798045,"label":"低コスト化・短工期化に向けた高精度下水管清掃・調査・修繕サービスデジタルプラットフォームの整備","round":"17"},{"x":11.943596,"y":7.1880693,"label":"１個・１個単位での試作開発受注に対応した高精度・高効率・フレキシブル多面同時一体加工技術の確立","round":"17"},{"x":10.3734045,"y":6.345354,"label":"オーダーメイド設備導入による品質検査工程の完全自動化に挑戦！空圧機器向け精密部品の生産量増加計画","round":"17"},{"x":10.336718,"y":6.4582105,"label":"オーダーメイド設備による測定作業の完全自動化に挑戦！油圧ソノレイド向け精密部品の生産量増加計画","round":"17"},{"x":10.805083,"y":4.157157,"label":"ＣＡＤ／ＣＡＭソフトと５軸ＣＮＣマシンの連動およびＩｏＴシステム導入による特注長尺家具の生産性向上事業","round":"17"},{"x":8.254346,"y":1.0696208,"label":"ＡＩを活用したオーダーメイド骨材表面水率自動判断システムの構築による現場練り生コン提供プロセスの労働生産性向上","round":"17"}];
+
+    const baseSize = 7, baseOpacity = 0.25;
+    const hitSize  = 12, hitOpacity = 1.0;
+
+    const chartEl = document.getElementById("chart");
+    const statsEl = document.getElementById("stats");
+    const kwInput = document.getElementById("kw");
+    const useRe = document.getElementById("useRe");
+    const caseSensitive = document.getElementById("caseSensitive");
+    const wordBoundary = document.getElementById("wordBoundary");
+    const topkEl = document.getElementById("topk");
+
+    // 採択回でグループ化し、customdataに rows のインデックスを保持
+    const byRound = new Map();
+    rows.forEach((r, idx) => {
+      if (!byRound.has(r.round)) byRound.set(r.round, { x: [], y: [], labels: [], idx: [] });
+      const g = byRound.get(r.round);
+      g.x.push(r.x); g.y.push(r.y); g.labels.push(r.label); g.idx.push(idx);
+  });
+
+    const traces = [];
+    for (const [roundName, g] of byRound) {
+      traces.push({
+        x: g.x,
+        y: g.y,
+        text: new Array(g.labels.length).fill(""),
+        hovertext: g.labels,
+        mode: "markers+text",
+        textposition: "top center",
+        name: roundName,
+        marker: {
+          size: new Array(g.labels.length).fill(baseSize),
+          opacity: new Array(g.labels.length).fill(baseOpacity)
+      },
+        customdata: g.idx, // ← クリックから rows の何番かを取得
+        hovertemplate: "%{hovertext}<extra></extra>"
+    });
+  }
+
+    const layout = {
+      title: "計画名をプロットして類似計画名を探す",
+      legend: { orientation: "h" },
+      margin: { t: 60, r: 20, l: 50, b: 50 },
+      xaxis: { zeroline: false },
+      yaxis: { zeroline: false }
+  };
+    await Plotly.newPlot(chartEl, traces, layout, { responsive: true, scrollZoom: true });
+
+    /** 検索（既存仕様を維持） **/
+    const compileMatcher = (raw, isRe, isCS, useWB) => {
+      const kw = raw.trim();
+      if (kw.length === 0) return () => false;
+      if (isRe) {
+        let src = kw; if (useWB) src = `\\b${src}\\b`;
+        try { const re = new RegExp(src, isCS ? "" : "i"); return s => re.test(s); }
+        catch { return () => false; }
+    }
+      const needle = isCS ? kw : kw.toLowerCase();
+      if (useWB) {
+        const esc = needle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const re = new RegExp(`\\b${esc}\\b`, isCS ? "" : "i");
+        return s => re.test(s);
+    }
+      return s => (isCS ? s.includes(needle) : s.toLowerCase().includes(needle));
+  };
+
+    const applySearch = () => {
+      const raw = kwInput.value;
+      const matcher = compileMatcher(raw, useRe.checked, caseSensitive.checked, wordBoundary.checked);
+      let total = 0, hits = 0;
+
+      for (let ti = 0; ti < traces.length; ti++) {
+        const labels = traces[ti].hovertext;
+        total += labels.length;
+        const hitMask = labels.map(matcher);
+        hits += hitMask.filter(Boolean).length;
+
+        const opacity = hitMask.map(h => h ? hitOpacity : baseOpacity);
+        const size = hitMask.map(h => h ? hitSize : baseSize);
+        const text = hitMask.map((h, i) => h ? labels[i] : "");
+
+        Plotly.restyle(chartEl, {
+          "marker.opacity": [opacity],
+          "marker.size": [size],
+          "text": [text]
+      }, [ti]);
+    }
+      statsEl.textContent = `一致: ${hits}/${total}（hoverでlabel表示、検索一致時のみ常時ラベル表示）`;
+  };
+
+    let timerId;
+    const debounce = (fn, ms = 100) => (...args) => {
+      clearTimeout(timerId);
+      timerId = setTimeout(() => fn(...args), ms);
+  };
+    const handle = debounce(applySearch, 100);
+    kwInput.addEventListener("input", handle);
+    useRe.addEventListener("change", applySearch);
+    caseSensitive.addEventListener("change", applySearch);
+    wordBoundary.addEventListener("change", applySearch);
+
+    presets.forEach(p => {
+      const btn = document.createElement("button");
+      btn.className = "chip";
+      btn.textContent = p;
+      btn.onclick = () => {
+        kwInput.value = p;
+        document.querySelectorAll(".chip").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        applySearch();
+    };
+      chipsEl.appendChild(btn);
+  });
+
+    applySearch();
+
+    /** ▼ ここから TopK 近傍（距離ベース） **/
+    const l2 = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
+
+    const clearHighlight = () => {
+      for (let ti = 0; ti < traces.length; ti++) {
+        const n = traces[ti].x.length;
+        Plotly.restyle(chartEl, {
+          "marker.size": [new Array(n).fill(baseSize)],
+          "marker.opacity": [new Array(n).fill(baseOpacity)]
+      }, [ti]);
+    }
+  };
+
+    const highlightIndices = (rowIndices, size = 11, opacity = 0.9) => {
+      for (let ti = 0; ti < traces.length; ti++) {
+        const cds = traces[ti].customdata;
+        const n = cds.length;
+        const sizes = new Array(n).fill(baseSize);
+        const opacs = new Array(n).fill(baseOpacity);
+        cds.forEach((rid, pi) => {
+          if (rowIndices.has(rid)) { sizes[pi] = size; opacs[pi] = opacity; }
+      });
+        Plotly.restyle(chartEl, { "marker.size": [sizes], "marker.opacity": [opacs] }, [ti]);
+    }
+  };
+
+    const computeTopK = (baseIdx, k = 20) => {
+      const b = rows[baseIdx];
+      const scored = [];
+      for (let i = 0; i < rows.length; i++) {
+        if (i === baseIdx) continue;
+        const r = rows[i];
+        const dist = l2(b.x, b.y, r.x, r.y);
+        scored.push({ idx: i, dist });
+    }
+      scored.sort((a, b) => a.dist - b.dist);
+      return scored.slice(0, k);
+  };
+
+    const renderTopK = (baseIdx, result) => {
+      const base = rows[baseIdx];
+      const header = `
+        <h2>Top-20 近傍（2D距離）</h2>
+        <div class="muted">基準: <span class="mono">(${base.x.toFixed(3)}, ${base.y.toFixed(3)})</span> ${base.label}</div>
+      `;
+      const tableHead = `
+        <table>
+          <thead>
+            <tr><th>#</th><th>label</th><th class="muted">採択回</th><th>dist</th><th class="muted">x</th><th class="muted">y</th></tr>
+          </thead>
+          <tbody>
+      `;
+      const rowsHtml = result.map((r, i) => {
+        const item = rows[r.idx];
+        return `
+          <tr data-rowidx="${r.idx}">
+            <td>${i+1}</td>
+            <td>${item.label}</td>
+            <td class="muted">${item.round}</td>
+            <td class="mono">${r.dist.toFixed(4)}</td>
+            <td class="mono muted">${item.x.toFixed(3)}</td>
+            <td class="mono muted">${item.y.toFixed(3)}</td>
+          </tr>
+        `;
+    }).join("");
+      topkEl.innerHTML = header + tableHead + rowsHtml + "</tbody></table>";
+
+      // 行クリックで該当点をズーム＆ハイライト
+      topkEl.querySelectorAll("tr[data-rowidx]").forEach(tr => {
+        tr.addEventListener("click", () => {
+          const rid = Number(tr.getAttribute("data-rowidx"));
+          const p = rows[rid];
+          clearHighlight();
+          highlightIndices(new Set([rid]), 14, 1.0);
+          Plotly.relayout(chartEl, {
+            xaxis: { range: [p.x - 1.5, p.x + 1.5] },
+            yaxis: { range: [p.y - 1.5, p.y + 1.5] }
+        });
+      });
+    });
+  };
+
+    // クリックでTopK更新
+    chartEl.on("plotly_click", (ev) => {
+      if (!ev?.points?.length) return;
+      const baseIdx = ev.points[0].customdata;
+      const top20 = computeTopK(baseIdx, 20);
+
+      // 可視上の一時ハイライト（基準点＋TopK）
+      clearHighlight();
+      const toHighlight = new Set([baseIdx, ...top20.map(o => o.idx)]);
+      highlightIndices(toHighlight, 11, 0.9);
+
+      // 表を描画
+      renderTopK(baseIdx, top20);
+  });
+  </script>
+</body>
+</html>
